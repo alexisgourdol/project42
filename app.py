@@ -3,9 +3,12 @@ from typing import List
 from typing import Dict
 from typing import Optional
 from typing import Union
+from itertools import count
 from sklearn.feature_extraction.text import CountVectorizer
+import base64
 import pandas as pd
-import streamlit as st  # type: ignore
+import streamlit as st  # type: ignoregit
+
 
 # PARSE INPUT FILE
 def parse(csv_file: str) -> pd.DataFrame:
@@ -34,7 +37,7 @@ def numeric_preproc(
         return df
 
 
-def free_text_preproc_from_dict(
+def free_text_preproc(
     df: pd.DataFrame,
     words_to_count: Optional[List[str]] = None,
     cols_to_count: Optional[List[str]] = None,
@@ -45,15 +48,18 @@ def free_text_preproc_from_dict(
     |  0 |     1 |     0 |     0 |  ... |    0 |"""
     vec = CountVectorizer()
 
-    # Tokenize and count the whole df, or the subset of cols specified
+    # Merge all columns or just the provided subset `cols_to_count` as text
+    # Tokenize and count
     if cols_to_count == None:
-        X = vec.fit_transform(df.position_type)
-        count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
+        df_str = df.astype('str').apply(' '.join, axis=1)
     else:
-        X = vec.fit_transform(df[cols_to_count].position_type)
-        count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
+        df_str = df[cols_to_count].astype('str').apply(' '.join, axis=1)
+    X = vec.fit_transform(df_str)
+    count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
 
     # For each keyword, check if it appears on the `vec.get_feature_names()`
+    words_to_count = [word.lower() for word in words_to_count]
+    words_to_count = [word.strip() for word in words_to_count]
     count_df_kw = pd.DataFrame(index=count_df.index)
     for kw in words_to_count:
         # If so, keep the column
@@ -77,6 +83,9 @@ def date_time_preproc(
 
 
 def main():
+
+    c = count()
+
     st.set_page_config(
         page_title="Ex-stream-ly Cool App",
         page_icon="🧊",
@@ -96,6 +105,8 @@ def main():
     ########################################################################
 
     st.markdown("""# Data type clean up""")
+
+    st.image('separator-blgr-50.png', use_column_width=True)
     st.markdown("""### Overview of columns and types""")
     st.write(pd.concat([df.dtypes.to_frame().T, df.head(3)]))
 
@@ -121,57 +132,56 @@ def main():
     timedelta_cols = df.select_dtypes("timedelta").columns.to_list()
     col2.text(timedelta_cols)
 
+    st.image('separator-blgr-50.png', use_column_width=True)
     st.markdown("""### Columns selection""")
 
     def col_transform(df):
         col1, col2, col3 = st.beta_columns([2, 1, 1])
-        t1_options = col1.multiselect(
-            "Columns to transform",
-            df.columns.to_list(),
-            df.columns.to_list()[0],
-        )
 
-        transformations = (
-            "To number",
-            "Count of keywords",
-            "To datetime",
-            "To timedelta",
-            "To a boolean",
-        )
-        t1_transformation = col2.selectbox(
-            "Transformation to apply",
-            transformations,
-        )
+        options = col1.multiselect("Columns to transform",df.columns.to_list(),df.columns.to_list()[0],key=int(next(c)))
+
+        transformations = ("To number", "Count of keywords", "To datetime",
+                            "To timedelta","To a boolean")
+        transformation = col2.selectbox("Transformation to apply",transformations,key=int(next(c)))
+
         with col3:
-            if t1_transformation == transformations[0]:
-                st.selectbox(
-                    "Target data type ?", ("int64", "float64", "int32", "float32")
-                )
-            if t1_transformation == transformations[1]:
-                st.text_input("keywords")
-            if t1_transformation == transformations[2]:
-                st.selectbox(" ", ("int64", "float64", "int32", "float32"))
-            if t1_transformation == transformations[3]:
-                st.selectbox("  ", ("int64", "float64", "int32", "float32"))
-            if t1_transformation == transformations[4]:
-                st.selectbox("", (""))
+            if transformation == transformations[0]:
+                params = st.selectbox("Target data type ?", ("int64", "float64", "int32", "float32"),key=int(next(c)))
+            if transformation == transformations[1]:
+                kw = st.text_input("Comma separated keywords",key=int(next(c)))
+                kw = kw.split()
+                kw = [word.strip() for word in kw if word not in ('', ' ')]
+                params = [word.replace(',','') for word in kw]
+            if transformation == transformations[2]:
+                params = st.selectbox(" ", (""),key=int(next(c)))
+            if transformation == transformations[3]:
+                params = st.selectbox(" ", (""),key=int(next(c)))
+            if transformation == transformations[4]:
+                params = st.selectbox(" ", (""),key=int(next(c)))
 
-        st.text(f"You selected: {t1_options}")
-        if t1_transformation == "To number":
-            t1_df = numeric_preproc(df, t1_options)
-        if t1_transformation == "Count of keywords":
-            t1_df = free_text_preproc_from_dict(df[t1_options])
-        if t1_transformation == "To datetime":
-            pass  # t1_df  # TO DO
-        if t1_transformation == "To timedelta":
-            pass  # t1_df  # TO DO
-        return t1_df
+        st.text(f"SUMMARY \n Columns: {options} \n Transformation: {transformation} \n Parameters: {params}")
+
+        if transformation == "To number":
+            try:
+                df = numeric_preproc(df, options)
+            except ValueError as e:
+                st.error(f"This data type cannot be converted into a number, please change the column or transformation selection [{e}] ")
+        if transformation == "Count of keywords":
+            df = free_text_preproc(df, words_to_count=params, cols_to_count=options )
+        if transformation == "To datetime":
+            pass  # df  # TO DO
+        if transformation == "To timedelta":
+            pass  # df  # TO DO
+        return df
 
     # df_n = numeric_preproc(df, df.columns.to_list(), target_dtype="float32")
     # st.write("changed dtypes")
     processed_subdf = []
-    res = col_transform(df)
-    processed_subdf.append(res)
+    def get_result(df):
+        res = col_transform(df)
+        processed_subdf.append(res)
+
+    get_result(df)
     # DuplicateWidgetID: There are multiple identical st.multiselect widgets with the same generated key.
     # if st.button("➕ Save transformation and add another"):
     # col_transform(df)
@@ -183,12 +193,25 @@ def main():
     # st.table(col_transform(df))
 
     st.markdown("""### Resulting table""")
+    st.text(f"Result shapex: {processed_subdf[0].shape}")
     st.write(
         pd.concat(
             [processed_subdf[0].dtypes.to_frame().T, processed_subdf[0].head(3)]
         )
     )
-    if st.button("📥 Download as csv!"):
+
+    def get_table_download_link(df):
+        """Generates a link allowing the data in a given panda dataframe to be downloaded
+        in:  dataframe
+        out: href string
+        """
+        csv = df.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
+        href = f'<a href="data:file/csv;base64,{b64}" download="myfilename.csv">Download csv file</a>'
+        return href
+
+    st.image('separator-blgr-50.png', use_column_width=True)
+    st.markdown(get_table_download_link(processed_subdf[0]), unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
