@@ -7,14 +7,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 import pandas as pd
 import streamlit as st  # type: ignore
 
-VALID_DTYPES = {'integer'  : 'int64',
-                'float'    : 'float64',
-                'text'     : 'str',
-                'timestamp': 'datetime',
-                'timedelta': 'timedelta',
-                'category' : 'category'
-                }
-
 # PARSE INPUT FILE
 def parse(csv_file: str) -> pd.DataFrame:
     """Reads csv file, returns a dataframe"""
@@ -25,16 +17,16 @@ def parse(csv_file: str) -> pd.DataFrame:
 def numeric_preproc(
     df: pd.DataFrame,
     cols_to_num: Union[Optional[List[str]], Optional[Dict[str, str]]] = None,
-    target_dtype: str = "int64",
+    target_dtype: str = "float64",
 ) -> pd.DataFrame:
     """Converts columns in the parameter array into specified dtype.
-    Defaults to `int64` if a list of columns are provided
-    Accepts a dictionnary <str> with column names as keys, <str> target dtype as value"""
-    if type(cols_to_num) == type([]):
+    Defaults to `int64` if a list of columns are provided. Accepts a
+    dictionnary <str> with column names as keys, <str> target dtype as value"""
+    if isinstance(cols_to_num, list):
         to_num_df = df[cols_to_num].copy()
         to_num_df = to_num_df.astype(target_dtype, copy=True)
         return to_num_df
-    elif type(cols_to_num) == type({}):
+    elif isinstance(cols_to_num, dict):
         to_num_df = df[cols_to_num].copy()
         to_num_df = to_num_df.astype(cols_to_num, copy=False)
         return to_num_df
@@ -44,9 +36,32 @@ def numeric_preproc(
 
 def free_text_preproc_from_dict(
     df: pd.DataFrame,
-    words_to_keep: Union[Optional[List[str]], Optional[Dict[str, str]]] = None,
+    words_to_count: Optional[List[str]] = None,
+    cols_to_count: Optional[List[str]] = None,
 ) -> pd.Dataframe:
-    pass
+    """Extracts keywwords in the list from the text in a specific dataframe column
+    Returns a dataframe with count of keywords
+    |    | apple | banana| peer  |  ... | lemon|
+    |  0 |     1 |     0 |     0 |  ... |    0 |"""
+    vec = CountVectorizer()
+
+    # Tokenize and count the whole df, or the subset of cols specified
+    if cols_to_count == None:
+        X = vec.fit_transform(df.position_type)
+        count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
+    else:
+        X = vec.fit_transform(df[cols_to_count].position_type)
+        count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
+
+    # For each keyword, check if it appears on the `vec.get_feature_names()`
+    count_df_kw = pd.DataFrame(index=count_df.index)
+    for kw in words_to_count:
+        # If so, keep the column
+        if kw in count_df.columns:
+            count_df_kw = count_df_kw.merge(
+                count_df.get(kw), left_index=True, right_index=True
+            )
+    return count_df_kw
 
 
 def categorical_preproc(
@@ -108,20 +123,72 @@ def main():
 
     st.markdown("""### Columns selection""")
 
-    options = st.multiselect(
-        "Which columns do you want to transform ?",
-        df.columns.to_list(),
-        df.columns.to_list()[0],
-    )
-    st.text(f"You selected: {options}")
+    def col_transform(df):
+        col1, col2, col3 = st.beta_columns([2, 1, 1])
+        t1_options = col1.multiselect(
+            "Columns to transform",
+            df.columns.to_list(),
+            df.columns.to_list()[0],
+        )
 
-    for option in options:
-        col1, col2 = st.beta_columns(2)
+        transformations = (
+            "To number",
+            "Count of keywords",
+            "To datetime",
+            "To timedelta",
+            "To a boolean",
+        )
+        t1_transformation = col2.selectbox(
+            "Transformation to apply",
+            transformations,
+        )
+        with col3:
+            if t1_transformation == transformations[0]:
+                st.selectbox(
+                    "Target data type ?", ("int64", "float64", "int32", "float32")
+                )
+            if t1_transformation == transformations[1]:
+                st.text_input("keywords")
+            if t1_transformation == transformations[2]:
+                st.selectbox(" ", ("int64", "float64", "int32", "float32"))
+            if t1_transformation == transformations[3]:
+                st.selectbox("  ", ("int64", "float64", "int32", "float32"))
+            if t1_transformation == transformations[4]:
+                st.selectbox("", (""))
 
-        col2.selectbox(label, options, index=0, format_func=<class 'str'>, key=None)
+        st.text(f"You selected: {t1_options}")
+        if t1_transformation == "To number":
+            t1_df = numeric_preproc(df, t1_options)
+        if t1_transformation == "Count of keywords":
+            t1_df = free_text_preproc_from_dict(df[t1_options])
+        if t1_transformation == "To datetime":
+            pass  # t1_df  # TO DO
+        if t1_transformation == "To timedelta":
+            pass  # t1_df  # TO DO
+        return t1_df
 
     # df_n = numeric_preproc(df, df.columns.to_list(), target_dtype="float32")
     # st.write("changed dtypes")
+    processed_subdf = []
+    res = col_transform(df)
+    processed_subdf.append(res)
+    # DuplicateWidgetID: There are multiple identical st.multiselect widgets with the same generated key.
+    # if st.button("➕ Save transformation and add another"):
+    # col_transform(df)
+    # if st.button("✅ Finish the job!"):
+    # first_df = processed_subdf[0].copy()
+    # for df in processed_subdf[1:]:
+    # final_df = pd.concat([first_df, df], axis=1)
+    # st.write("Save as csv")
+    # st.table(col_transform(df))
+
+    st.markdown("""### Resulting table""")
+    st.write(
+        pd.concat(
+            [processed_subdf[0].dtypes.to_frame().T, processed_subdf[0].head(3)]
+        )
+    )
+    if st.button("📥 Download as csv!"):
 
 
 if __name__ == "__main__":
