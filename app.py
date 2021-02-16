@@ -163,7 +163,7 @@ def main():
 
         if transformation == "To number":
             try:
-                df = numeric_preproc(df, options)
+                df = numeric_preproc(df, cols_to_num=options, target_dtype=params)
             except ValueError as e:
                 st.error(f"This data type cannot be converted into a number, please change the column or transformation selection [{e}] ")
         if transformation == "Count of keywords":
