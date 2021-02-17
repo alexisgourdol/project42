@@ -81,17 +81,14 @@ def date_time_preproc(
 ) -> pd.Dataframe:
     pass
 
-
-def main():
-
-    c = count()
-
+def set_config():
     st.set_page_config(
-        page_title="Ex-stream-ly Cool App",
-        page_icon="🧊",
+        page_title="Sweepitklean",
+        page_icon="🧹",
         layout="wide",
         initial_sidebar_state="expanded",
     )
+def side_bar():
     ########################################################################
     #                               SIDEBAR                                #
     ########################################################################
@@ -100,6 +97,23 @@ def main():
         uploaded_file = st.file_uploader("Upload your input CSV file", type=["csv"])
         if uploaded_file is not None:
             df = parse(uploaded_file).copy()
+        else:
+            df = pd.DataFrame({'name': ['Joe', 'Jane', 'Jill'],
+                               'avg_grade' : [7.1, 7.6, 8.9],
+                               'age': [18, 17, 16],
+                               'major' : ['Econ', 'Math', 'Econ'],
+                               'registered' : [True, False, True]
+                               })
+            df["major"] = df["major"].astype("category")
+            df["year"] = pd.Series(pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="202D"))
+            df["year_delta"] = df.year - df.year.shift(periods=1)
+
+        return df
+
+def main():
+
+    c = count()
+
     ########################################################################
     #                               BODY                                   #
     ########################################################################
@@ -108,6 +122,7 @@ def main():
 
     st.image('separator-blgr-50.png', use_column_width=True)
     st.markdown("""### Overview of columns and types""")
+    st.write(f"This dataset contains {df.shape[0]} lines and {df.shape[1]} columns ")
     st.write(pd.concat([df.dtypes.to_frame().T, df.head(3)]))
 
     col1, col2 = st.beta_columns([2, 1])
@@ -215,4 +230,6 @@ def main():
 
 
 if __name__ == "__main__":
+    set_config()
+    df = side_bar()
     main()
