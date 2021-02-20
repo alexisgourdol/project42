@@ -83,7 +83,8 @@ def date_time_preproc(
     df: pd.DataFrame, cols_to_convert: Optional[List[str]] = None
 ) -> pd.Dataframe:
     if cols_to_convert is not None:
-        if len(cols_to_convert) == 1:      # if 1 col, then df[col] is a Series and loop fails => changing df to a pd.DataFrame
+        # if 1 col, then df is a Series and accessing df[col] makes the loop fail => changing to a pd.DataFrame with extra []
+        if len(cols_to_convert) == 1:
             df = df[cols_to_convert].copy()
         for col in cols_to_convert:
             df[col] = pd.to_datetime(df[col])
@@ -158,7 +159,7 @@ def overview():
 
     st.image('separator-blgr-50.png', use_column_width=True)
 
-def get_table_download_link(df):
+def get_table_download_link(df: pd.DataFrame):
     """Generates a link allowing the data in a given pandas dataframe to be downloaded
     in:  dataframe
     out: href string
@@ -175,7 +176,7 @@ def main():
 
     st.markdown("""### Columns selection""")
 
-    def col_transform(df):
+    def col_transform(df: pd.DataFrame):
         col1, col2, col3 = st.beta_columns([2, 1, 1])
 
         options = col1.multiselect("Columns to transform",df.columns.to_list(),df.columns.to_list()[0], key=int(next(c)))
@@ -220,7 +221,7 @@ def main():
     # df_n = numeric_preproc(df, df.columns.to_list(), target_dtype="float32")
     # st.write("changed dtypes")
 
-    def get_result(df, lst: List)-> List[pd.DataFrame]:
+    def get_result(df: pd.DataFrame, lst: List)-> List[pd.DataFrame]:
         res = col_transform(df)
         lst.append(res)
         return lst
