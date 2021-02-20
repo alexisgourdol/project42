@@ -13,7 +13,10 @@ import streamlit as st  # type: ignoregit
 # PARSE INPUT FILE
 def parse(csv_file: str) -> pd.DataFrame:
     """Reads csv file, returns a dataframe"""
-    return pd.read_csv(csv_file)
+    df = pd.read_csv(csv_file)
+    if df.shape[1] == 1:
+        df = pd.read_csv(csv_file, delimiter=';')
+    return df
 
 
 # NUMERICAL PREPROC
@@ -79,7 +82,16 @@ def categorical_preproc(
 def date_time_preproc(
     df: pd.DataFrame, cols_to_convert: Optional[List[str]] = None
 ) -> pd.Dataframe:
-    pass
+    if cols_to_convert is not None:
+        if len(cols_to_convert) == 1:      # if 1 col, then df[col] is a Series and loop fails => changing df to a pd.DataFrame
+            df = df[cols_to_convert].copy()
+        for col in cols_to_convert:
+            df[col] = pd.to_datetime(df[col])
+        return df
+    else:
+        for col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='ignore')
+        return df
 
 def set_config():
     st.set_page_config(
@@ -106,18 +118,15 @@ def side_bar():
                                })
             df["major"] = df["major"].astype("category")
             df["year"] = pd.Series(pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="202D"))
+            df["year_2"] = pd.Series(pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="207D"))
             df["year_delta"] = df.year - df.year.shift(periods=1)
 
         return df
 
-def main():
-
-    c = count()
-
+def overview():
     ########################################################################
     #                               BODY                                   #
     ########################################################################
-
     st.markdown("""# Data type clean up""")
 
     st.image('separator-blgr-50.png', use_column_width=True)
@@ -148,55 +157,76 @@ def main():
     col2.text(timedelta_cols)
 
     st.image('separator-blgr-50.png', use_column_width=True)
+
+def get_table_download_link(df):
+    """Generates a link allowing the data in a given pandas dataframe to be downloaded
+    in:  dataframe
+    out: href string
+    """
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
+    href = f'<a href="data:file/csv;base64,{b64}" download="myfilename.csv">Download csv file</a>'
+    return href
+
+def main():
+    # iterator to set each time a different `key` into the streamlit objects
+    # this avoid conflict issues with objects' ids
+    c = count()
+
     st.markdown("""### Columns selection""")
 
     def col_transform(df):
         col1, col2, col3 = st.beta_columns([2, 1, 1])
 
-        options = col1.multiselect("Columns to transform",df.columns.to_list(),df.columns.to_list()[0],key=int(next(c)))
+        options = col1.multiselect("Columns to transform",df.columns.to_list(),df.columns.to_list()[0], key=int(next(c)))
 
         transformations = ("To number", "Count of keywords", "To datetime",
                             "To timedelta","To a boolean")
-        transformation = col2.selectbox("Transformation to apply",transformations,key=int(next(c)))
+        transformation = col2.selectbox("Transformation to apply",transformations, key=int(next(c)))
 
         with col3:
             if transformation == transformations[0]:
-                params = st.selectbox("Target data type ?", ("int64", "float64", "int32", "float32"),key=int(next(c)))
+                params = st.selectbox("Target data type ?", ("int64", "float64", "int32", "float32"), key=int(next(c)))
             if transformation == transformations[1]:
-                kw = st.text_input("Comma separated keywords",key=int(next(c)))
+                kw = st.text_input("Comma separated keywords", key=int(next(c)))
                 kw = kw.split()
                 kw = [word.strip() for word in kw if word not in ('', ' ')]
                 params = [word.replace(',','') for word in kw]
             if transformation == transformations[2]:
-                params = st.selectbox(" ", (""),key=int(next(c)))
+                params = st.selectbox("Convert to datetime", ("datetime64",), key=int(next(c)))
             if transformation == transformations[3]:
-                params = st.selectbox(" ", (""),key=int(next(c)))
+                params = st.selectbox(" ", (""), key=int(next(c)))
             if transformation == transformations[4]:
-                params = st.selectbox(" ", (""),key=int(next(c)))
+                params = st.selectbox(" ", (""), key=int(next(c)))
 
         st.text(f"SUMMARY \n Columns: {options} \n Transformation: {transformation} \n Parameters: {params}")
 
-        if transformation == "To number":
+        if transformation == transformations[0]:
             try:
                 df = numeric_preproc(df, cols_to_num=options, target_dtype=params)
             except ValueError as e:
                 st.error(f"This data type cannot be converted into a number, please change the column or transformation selection [{e}] ")
-        if transformation == "Count of keywords":
+
+        if transformation == transformations[1]:
             df = free_text_preproc(df, words_to_count=params, cols_to_count=options )
-        if transformation == "To datetime":
-            pass  # df  # TO DO
+
+        if transformation == transformations[2]:
+            df = date_time_preproc(df, cols_to_convert=options)
+
         if transformation == "To timedelta":
             pass  # df  # TO DO
         return df
 
     # df_n = numeric_preproc(df, df.columns.to_list(), target_dtype="float32")
     # st.write("changed dtypes")
-    processed_subdf = []
-    def get_result(df):
-        res = col_transform(df)
-        processed_subdf.append(res)
 
-    get_result(df)
+    def get_result(df, lst: List)-> List[pd.DataFrame]:
+        res = col_transform(df)
+        lst.append(res)
+        return lst
+
+    processed_subdf = []
+    get_result(df, processed_subdf)
     # DuplicateWidgetID: There are multiple identical st.multiselect widgets with the same generated key.
     # if st.button("➕ Save transformation and add another"):
     # col_transform(df)
@@ -208,28 +238,22 @@ def main():
     # st.table(col_transform(df))
 
     st.markdown("""### Resulting table""")
-    st.text(f"Result shapex: {processed_subdf[0].shape}")
-    st.write(
+    st.text(f"Result shape: {processed_subdf[0].shape}")
+    st.write(processed_subdf[0])
+    """st.write(
         pd.concat(
             [processed_subdf[0].dtypes.to_frame().T, processed_subdf[0].head(3)]
         )
     )
 
-    def get_table_download_link(df):
-        """Generates a link allowing the data in a given panda dataframe to be downloaded
-        in:  dataframe
-        out: href string
-        """
-        csv = df.to_csv(index=False)
-        b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
-        href = f'<a href="data:file/csv;base64,{b64}" download="myfilename.csv">Download csv file</a>'
-        return href
+
 
     st.image('separator-blgr-50.png', use_column_width=True)
-    st.markdown(get_table_download_link(processed_subdf[0]), unsafe_allow_html=True)
+    st.markdown(get_table_download_link(processed_subdf[0]), unsafe_allow_html=True)"""
 
 
 if __name__ == "__main__":
     set_config()
     df = side_bar()
+    overview()
     main()
