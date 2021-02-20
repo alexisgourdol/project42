@@ -1,13 +1,15 @@
+import base64
 from __future__ import annotations
 from typing import List
 from typing import Dict
 from typing import Optional
 from typing import Union
 from itertools import count
-from sklearn.feature_extraction.text import CountVectorizer
-import base64
+
+import streamlit as st  # type: ignore
 import pandas as pd
-import streamlit as st  # type: ignoregit
+from pandas._typing import DataFrame  # type: ignore
+from sklearn.feature_extraction.text import CountVectorizer  # type: ignore
 
 
 # PARSE INPUT FILE
@@ -15,16 +17,16 @@ def parse(csv_file: str) -> pd.DataFrame:
     """Reads csv file, returns a dataframe"""
     df = pd.read_csv(csv_file)
     if df.shape[1] == 1:
-        df = pd.read_csv(csv_file, delimiter=';')
+        df = pd.read_csv(csv_file, delimiter=";")
     return df
 
 
 # NUMERICAL PREPROC
 def numeric_preproc(
-    df: pd.DataFrame,
+    df: DataFrame,
     cols_to_num: Union[Optional[List[str]], Optional[Dict[str, str]]] = None,
     target_dtype: str = "float64",
-) -> pd.DataFrame:
+) -> DataFrame:
     """Converts columns in the parameter array into specified dtype.
     Defaults to `int64` if a list of columns are provided. Accepts a
     dictionnary <str> with column names as keys, <str> target dtype as value"""
@@ -41,10 +43,10 @@ def numeric_preproc(
 
 
 def free_text_preproc(
-    df: pd.DataFrame,
-    words_to_count: Optional[List[str]] = None,
+    df: DataFrame,
+    words_to_count: List[str],
     cols_to_count: Optional[List[str]] = None,
-) -> pd.Dataframe:
+) -> DataFrame:
     """Extracts keywwords in the list from the text in a specific dataframe column
     Returns a dataframe with count of keywords
     |    | apple | banana| peer  |  ... | lemon|
@@ -54,9 +56,9 @@ def free_text_preproc(
     # Merge all columns or just the provided subset `cols_to_count` as text
     # Tokenize and count
     if cols_to_count == None:
-        df_str = df.astype('str').apply(' '.join, axis=1)
+        df_str = df.astype("str").apply(" ".join, axis=1)
     else:
-        df_str = df[cols_to_count].astype('str').apply(' '.join, axis=1)
+        df_str = df[cols_to_count].astype("str").apply(" ".join, axis=1)
     X = vec.fit_transform(df_str)
     count_df = pd.DataFrame(X.toarray(), columns=vec.get_feature_names())
 
@@ -74,14 +76,14 @@ def free_text_preproc(
 
 
 def categorical_preproc(
-    df: pd.DataFrame, cols_to_encode: Optional[List[str]] = None
-) -> pd.Dataframe:
+    df: DataFrame, cols_to_encode: Optional[List[str]] = None
+) -> DataFrame:
     pass
 
 
 def date_time_preproc(
-    df: pd.DataFrame, cols_to_convert: Optional[List[str]] = None
-) -> pd.Dataframe:
+    df: DataFrame, cols_to_convert: Optional[List[str]] = None
+) -> DataFrame:
     if cols_to_convert is not None:
         # if 1 col, then df is a Series and accessing df[col] makes the loop fail => changing to a pd.DataFrame with extra []
         if len(cols_to_convert) == 1:
@@ -91,8 +93,9 @@ def date_time_preproc(
         return df
     else:
         for col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='ignore')
+            df[col] = pd.to_datetime(df[col], errors="ignore")
         return df
+
 
 def set_config():
     st.set_page_config(
@@ -101,6 +104,8 @@ def set_config():
         layout="wide",
         initial_sidebar_state="expanded",
     )
+
+
 def side_bar():
     ########################################################################
     #                               SIDEBAR                                #
@@ -111,18 +116,26 @@ def side_bar():
         if uploaded_file is not None:
             df = parse(uploaded_file).copy()
         else:
-            df = pd.DataFrame({'name': ['Joe', 'Jane', 'Jill'],
-                               'avg_grade' : [7.1, 7.6, 8.9],
-                               'age': [18, 17, 16],
-                               'major' : ['Econ', 'Math', 'Econ'],
-                               'registered' : [True, False, True]
-                               })
+            df = pd.DataFrame(
+                {
+                    "name": ["Joe", "Jane", "Jill"],
+                    "avg_grade": [7.1, 7.6, 8.9],
+                    "age": [18, 17, 16],
+                    "major": ["Econ", "Math", "Econ"],
+                    "registered": [True, False, True],
+                }
+            )
             df["major"] = df["major"].astype("category")
-            df["year"] = pd.Series(pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="202D"))
-            df["year_2"] = pd.Series(pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="207D"))
+            df["year"] = pd.Series(
+                pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="202D")
+            )
+            df["year_2"] = pd.Series(
+                pd.date_range(pd.Timestamp("2003-07-01"), periods=3, freq="207D")
+            )
             df["year_delta"] = df.year - df.year.shift(periods=1)
 
         return df
+
 
 def overview():
     ########################################################################
@@ -130,7 +143,7 @@ def overview():
     ########################################################################
     st.markdown("""# Data type clean up""")
 
-    st.image('separator-blgr-50.png', use_column_width=True)
+    st.image("separator-blgr-50.png", use_column_width=True)
     st.markdown("""### Overview of columns and types""")
     st.write(f"This dataset contains {df.shape[0]} lines and {df.shape[1]} columns ")
     st.write(pd.concat([df.dtypes.to_frame().T, df.head(3)]))
@@ -157,17 +170,21 @@ def overview():
     timedelta_cols = df.select_dtypes("timedelta").columns.to_list()
     col2.text(timedelta_cols)
 
-    st.image('separator-blgr-50.png', use_column_width=True)
+    st.image("separator-blgr-50.png", use_column_width=True)
 
-def get_table_download_link(df: pd.DataFrame):
+
+def get_table_download_link(df: DataFrame):
     """Generates a link allowing the data in a given pandas dataframe to be downloaded
     in:  dataframe
     out: href string
     """
     csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
+    b64 = base64.b64encode(
+        csv.encode()
+    ).decode()  # some strings <-> bytes conversions necessary here
     href = f'<a href="data:file/csv;base64,{b64}" download="myfilename.csv">Download csv file</a>'
     return href
+
 
 def main():
     # iterator to set each time a different `key` into the streamlit objects
@@ -176,40 +193,62 @@ def main():
 
     st.markdown("""### Columns selection""")
 
-    def col_transform(df: pd.DataFrame):
+    def col_transform(df: DataFrame):
         col1, col2, col3 = st.beta_columns([2, 1, 1])
 
-        options = col1.multiselect("Columns to transform",df.columns.to_list(),df.columns.to_list()[0], key=int(next(c)))
+        options = col1.multiselect(
+            "Columns to transform",
+            df.columns.to_list(),
+            df.columns.to_list()[0],
+            key=int(next(c)),
+        )
 
-        transformations = ("To number", "Count of keywords", "To datetime",
-                            "To timedelta","To a boolean")
-        transformation = col2.selectbox("Transformation to apply",transformations, key=int(next(c)))
+        transformations = (
+            "To number",
+            "Count of keywords",
+            "To datetime",
+            "To timedelta",
+            "To a boolean",
+        )
+        transformation = col2.selectbox(
+            "Transformation to apply", transformations, key=int(next(c))
+        )
 
         with col3:
             if transformation == transformations[0]:
-                params = st.selectbox("Target data type ?", ("int64", "float64", "int32", "float32"), key=int(next(c)))
+                params = st.selectbox(
+                    "Target data type ?",
+                    ("int64", "float64", "int32", "float32"),
+                    key=int(next(c)),
+                )
             if transformation == transformations[1]:
                 kw = st.text_input("Comma separated keywords", key=int(next(c)))
                 kw = kw.split()
-                kw = [word.strip() for word in kw if word not in ('', ' ')]
-                params = [word.replace(',','') for word in kw]
+                kw = [word.strip() for word in kw if word not in ("", " ")]
+                params = [word.replace(",", "") for word in kw]
             if transformation == transformations[2]:
-                params = st.selectbox("Convert to datetime", ("datetime64",), key=int(next(c)))
+                params = st.selectbox(
+                    "Convert to datetime", ("datetime64",), key=int(next(c))
+                )
             if transformation == transformations[3]:
                 params = st.selectbox(" ", (""), key=int(next(c)))
             if transformation == transformations[4]:
                 params = st.selectbox(" ", (""), key=int(next(c)))
 
-        st.text(f"SUMMARY \n Columns: {options} \n Transformation: {transformation} \n Parameters: {params}")
+        st.text(
+            f"SUMMARY \n Columns: {options} \n Transformation: {transformation} \n Parameters: {params}"
+        )
 
         if transformation == transformations[0]:
             try:
                 df = numeric_preproc(df, cols_to_num=options, target_dtype=params)
             except ValueError as e:
-                st.error(f"This data type cannot be converted into a number, please change the column or transformation selection [{e}] ")
+                st.error(
+                    f"This data type cannot be converted into a number, please change the column or transformation selection [{e}] "
+                )
 
         if transformation == transformations[1]:
-            df = free_text_preproc(df, words_to_count=params, cols_to_count=options )
+            df = free_text_preproc(df, words_to_count=params, cols_to_count=options)
 
         if transformation == transformations[2]:
             df = date_time_preproc(df, cols_to_convert=options)
@@ -221,7 +260,7 @@ def main():
     # df_n = numeric_preproc(df, df.columns.to_list(), target_dtype="float32")
     # st.write("changed dtypes")
 
-    def get_result(df: pd.DataFrame, lst: List)-> List[pd.DataFrame]:
+    def get_result(df: DataFrame, lst: List) -> List[DataFrame]:
         res = col_transform(df)
         lst.append(res)
         return lst
